@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Past expenses
+{% endblock %}
+
+{% block main %}
+    {% if no_data%}
+    <div class = "card text-center mt-4 py-4">
+            <p class = "fw-bold fs-5 mb-1">Nothing here yet!</p>
+            <p class="form-label text-center">Start tracking your spending by adding your first <a class="card-link" href = "/add">Expense.</a></p>
+    </div>
+
+    {%else%}
+    <div>
+        <div class="text-center mb-4">
+            <span class="fw-bold me-2 fs-5">Select year:</span>
+            {% for year in years %}
+                <a href="?year={{ year }}" class="btn btn-sm {% if year == selected_year %}btn-primary{% else %}btn-secondary{% endif %} me-1">
+                    {{ year }}
+                </a>
+            {% endfor %}
+        </div>
+
+        <table class="table custom-table">
+            <thead>
+
+                <tr>
+                    <th colspan="5" scope="row">History</th>
+                </tr>
+                <tr>
+
+                    <th scope="col">#</th>
+                    <th scope="col">Amount</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in history %}
+                    <tr>
+                        <th scope="row">{{loop.index}}</th>
+                        <td>${{"%.2f" | format(entry.amount)}}</td>
+                        <td>{{entry.category}}</td>
+                        <td>{{entry.description}}</td>
+                        <td>{{entry.date}}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+
+    </div>
+
+
+
+
+{%endif%}
+{% endblock %}

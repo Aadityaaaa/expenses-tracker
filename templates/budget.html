@@ -1,0 +1,285 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Budget planning
+{% endblock %}
+
+{% block main %}
+    <div class="budget-wrapper">
+        <div class="mb-3 text-center">
+            <button id = "add-budget-button" class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#budgetForm" aria-expanded="false" aria-controls="collapseExample">
+                {{"Update budget" if budget_exists else "Add budget"}}
+            </button>
+        </div>
+        <div class="collapse" id="budgetForm">
+            <div class="card card-body">
+                <form id="add_budget" method="post" action="/budget">
+                    <div id="budget_fields">
+                        {%if budget_exists%}
+                            {% for row in existing_budgets %}
+                                <div class="input-group mb-2">
+                                    <select class="form-select" name="category[]" aria-label="category" required>
+                                        {%for category in categories%}
+                                            <option value="{{category}}" {% if category == row.category %} selected {%endif%}>{{category}}</option>
+                                        {%endfor%}
+                                    </select>
+                                    <input type="number" aria-label="Amount" name="amount[]" class="form-control" placeholder="Amount" step="0.01" value="{{'%.2f' | format(row.amount)}}" required>
+                                    <button type="button" class="btn btn-danger remove-btn">Delete</button>
+                                </div>
+                            {%endfor%}
+
+                        {%else%}
+                            <div class="input-group mb-2">
+                                <select class="form-select" name="category[]" aria-label="category" required>
+                                    <option disabled {% if add %}selected{% endif %}>Select a category</option>
+                                    {%for category in categories%}
+                                        <option value="{{category}}">{{category}}</option>
+                                    {%endfor%}
+                                </select>
+                                <input type="number" aria-label="Amount" name="amount[]" class="form-control" placeholder="Amount" step="0.01" required>
+                                <button type="button" class="btn btn-outline-danger remove-btn">Delete</button>
+                            </div>
+
+                        {%endif%}
+                    </div>
+
+                    <div class="d-flex justify-content-center gap-2 mt-3">
+                        <button id="add_category" class="btn btn-secondary mb-2" type="button">Add more</button>
+                        <button class="btn btn-primary mb-2" type="submit">Submit</button>
+                    </div>
+
+
+                </form>
+            </div>
+        </div>
+
+
+         {% if budget_exists %}
+        <div class="progressChart-card">
+
+                <canvas id="progressChart"></canvas>
+        </div>
+        {% else %}
+        <div class = "card text-center mt-4 py-4">
+            <p class = "fw-bold fs-5 mb-1">No budget set yet!</p>
+            <p class="form-label text-center">Ready to take control of your spending?<a class="card-link" href = "#" onclick="document.getElementById('add-budget-button').click();"> Set your first budget.</a></p>
+        </div>
+
+        {%endif%}
+
+
+
+
+
+        <script>
+            const add_category = document.getElementById("add_category");
+
+            const budget_fields = document.getElementById("budget_fields");
+
+
+            add_category.addEventListener("click", function() {
+            //used chat gpt for help
+                const newinputpair = document.createElement("div");
+                newinputpair.className = "input-group mb-2"
+            //
+                newinputpair.innerHTML = `
+                    <select class="form-select" name="category[]" aria-label="category" required>
+                    <option disabled {% if add %}selected{% endif %}>Select a category</option>
+                    {%for category in categories%}
+                    <option value = "{{category}}">{{category}}</option>
+                    {%endfor%}
+                    </select>
+                    <input type="number" aria-label="Amount" name = "amount[]"class="form-control" placeholder ="Amount" required>
+                    <button type = "button" class="btn btn-danger remove-btn">Delete</button>
+                    `;
+
+                budget_fields.appendChild(newinputpair);
+
+            });
+
+        // used chat gpt for help
+            budget_fields.addEventListener("click", (event) => {
+                if (event.target.classList.contains("remove-btn")) {
+                    event.target.closest(".input-group").remove();
+                }
+            });
+        //
+        </script>
+
+
+        <script>
+            async function loadProgressBar() {
+                const response = await fetch("/budget/progressbar_data", {
+                    method: "POST"
+                });
+
+
+                const data = await response.json();
+
+                const labels = data.progress_labels;
+                const budget = data.progress_budget;
+                const spent = data.spent;
+
+                const remaining = budget.map((x, i) => Math.max(x - spent[i], 0));
+
+                const ctx = document.getElementById('progressChart')
+
+                const barHeight = 60;
+                const chartHeight = labels.length * barHeight + 80;
+                ctx.style.height = chartHeight + "px";
+
+
+                const spentBorderRadius = spent.map((s,i) =>
+                    s === 0
+                    ? 0
+                    :s>=budget[i]
+                        ? {topRight: 6,bottomRight: 6,topLeft: 6,bottomLeft: 6}
+                        : {topRight: 0,bottomRight: 0,topLeft: 6,bottomLeft: 6}
+
+
+                    );
+
+                const remainingBorderRadius = spent.map((s, i) =>
+                    s === 0
+                    ?{topRight: 6,bottomRight: 6,topLeft: 6,bottomLeft: 6}
+                    :{ topRight: 6,bottomRight: 6,topLeft: 0,bottomLeft: 0});
+
+                const spentBackgroundColor = spent.map((s,i)=>
+                s > budget[i]
+                ? 'rgb(231,76,60)'
+                :['rgba(255, 26, 104, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)',
+                    'rgba(255, 159, 64, 1)',
+                    'rgba(0, 0, 0, 1)'][i]
+
+            );
+
+
+            // Followed a Youtube tutorial ("https://youtu.be/JPvUe7nwMps?si=kZcEVuYp-Lua78qo") for inspiration and advice
+                const progressBar = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Spent',
+                            data: spent,
+                            backgroundColor: spentBackgroundColor,
+                            borderColor: [
+                                'rgba(255, 26, 104, 0.2)',
+                                'rgba(54, 162, 235, 0.2)',
+                                'rgba(255, 206, 86, 0.2)',
+                                'rgba(75, 192, 192, 0.2)',
+                                'rgba(153, 102, 255, 0.2)',
+                                'rgba(255, 159, 64, 0.2)',
+                                'rgba(0, 0, 0, 0.2)'
+                            ],
+                            borderWidth: 0,
+                            borderSkipped: false,
+                            borderRadius: spentBorderRadius,
+                            barPercentage: 0.5,
+                            categoryPercentage: 0.7
+
+
+                        },
+                            {
+                                label: 'Remaining',
+                                data: remaining,
+                                backgroundColor: [
+                                    'rgba(255, 26, 104, 0.4)',
+                                    'rgba(54, 162, 235, 0.4)',
+                                    'rgba(255, 206, 86, 0.4)',
+                                    'rgba(75, 192, 192, 0.4)',
+                                    'rgba(153, 102, 255, 0.4)',
+                                    'rgba(255, 159, 64, 0.4)',
+                                    'rgba(0, 0, 0, 0.4)'
+                                ],
+                                borderColor: [
+                                    'rgba(255, 26, 104, 0.2)',
+                                    'rgba(54, 162, 235, 0.2)',
+                                    'rgba(255, 206, 86, 0.2)',
+                                    'rgba(75, 192, 192, 0.2)',
+                                    'rgba(153, 102, 255, 0.2)',
+                                    'rgba(255, 159, 64, 0.2)',
+                                    'rgba(0, 0, 0, 0.2)'
+                                ],
+                                borderWidth: 0,
+                                borderSkipped: false,
+                                borderRadius: remainingBorderRadius,
+                                barPercentage: 0.5,
+                                categoryPercentage: 0.7
+
+                            },
+                        ]
+                    },
+
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                stacked: true,
+                                grid: {
+                                    display: false,
+                                    drawBorder: false
+                                },
+                                border: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: '#2c3e50',
+                                    callback: (value) => `$${value}`
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                grid: {
+                                    display: false,
+                                    drawBorder: false
+                                },
+                                border: {
+                                    display: false
+                                },
+                                beginAtZero: true,
+                                ticks: {
+                                    color: '#2c3e50'
+                                }
+                            }
+                        },
+
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Budget Progress',
+                                color: '#2c3e50',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                }
+                            },
+                            legend: {
+                                display: false
+                            },
+                        // Used ChatGPT for help
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `Spent: $${spent[index]}/$${budget[index]}`;
+                                    }
+                                }
+                            }
+                        //
+                        }
+
+                    }
+                });
+            }
+
+            loadProgressBar();
+        </script>
+    </div>
+{% endblock %}

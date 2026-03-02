@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    {{"edit expense" if edit else "add expense"}}
+{% endblock %}
+
+{% block main %}
+
+<!-- learned about dynamic urls based on selected id with the help of chatgpt -->
+    <form action="{{url_for ('edit', id = expense['id']) if edit and expense else url_for('add')}}" method="post">
+        <div class="form-container">
+            <input type="number" class="form-control" name="amount" placeholder="Amount" aria-label="amount" value="{{'%.2f' | format(expense.amount ) if edit else ''}}">
+            <select class="form-select" name="category" aria-label="category">
+                <option value="" disabled {%if not edit %}selected{%endif%}>Select a category</option>
+                {%for category in categories%}
+                    <option value="{{category}}" {% if edit and expense and expense['category'] == category %}selected{% endif %}>{{category}}</option>
+                {%endfor%}
+            </select>
+
+
+            <input type="text" class="form-control " name="description" placeholder="Decsription" aria-label="description" value="{{expense['description'] if edit else ''}}">
+
+            <button class="btn btn-primary" type="submit">{{"Update expense" if edit else "Add expense"}}</button>
+        </div>
+    </form>
+{% endblock %}

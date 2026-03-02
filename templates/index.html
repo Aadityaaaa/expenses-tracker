@@ -1,0 +1,186 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Index
+{% endblock %}
+
+{% block main %}
+
+
+    {%if no_data %}
+
+        <div class = "card text-center mt-4 py-4">
+            <p class = "fw-bold fs-5 mb-1">Nothing here yet!</p>
+            <p class="form-label text-center">Start tracking your spending by adding your first <a class="card-link" href = "/add">Expense.</a></p>
+        </div>
+
+    {%else%}
+        <div>
+            <form method="post" action="/" class="d-flex justify-content-center gap-1 mb-1">
+                <div class="btn-group">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Sort</button>
+                    <ul class="dropdown-menu custom-dropdown-menu">
+                        <li class="form-check">
+                            <input class="form-check-input" type="radio" name="sort-option" id="date-asc" value="date-asc" {%if sort_option =='date-asc'%} checked {%endif%}>
+                            <label class="form-check-label" for="date-asc">
+                                Earliest
+                            </label>
+                        </li>
+                        <li class="form-check">
+                            <input class="form-check-input" type="radio" name="sort-option" id="date-desc" value="date-desc" {%if sort_option == 'date-desc' %}checked{% endif%}>
+                            <label class="form-check-label" for="date-desc">
+                                Latest
+                            </label>
+                        </li>
+                        <li class="form-check">
+                            <input class="form-check-input" type="radio" name="sort-option" id="amount-asc" value="amount-asc" {%if sort_option =='amount-asc'%} checked {%endif%}>
+                            <label class="form-check-label" for="amount-asc">
+                                Amount (Lowest to Highest)
+                            </label>
+                        </li>
+                        <li class="form-check">
+                            <input class="form-check-input" type="radio" name="sort-option" id="amount-desc" value="amount-desc" {%if sort_option =='amount-desc'%} checked {%endif%}>
+                            <label class="form-check-label" for="amount-desc">
+                                Amount (Highest to lowest)
+                            </label>
+                        </li>
+                        <li class="mt-2">
+                            <button type="submit" class="btn btn-primary w-100">Sort</button>
+                        </li>
+                    </ul>
+                </div>
+
+                <button class="btn btn-secondary" type="button" data-bs-toggle="offcanvas" href="#offcanvas">Filter dates</button>
+
+                <div>
+                    <div class="offcanvas offcanvas-start" tabindex="-1" id="offcanvas" aria-labelledby="offcanvasLabel">
+                        <div class="offcanvas-header">
+                            <h5 class="offcanvas-title" id="offcanvasLabel">Filter dates</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+                        </div>
+                        <div class="offcanvas-body">
+                            <ul class="list group">
+                                <li class="list-group-item">
+                                    <input class="form-check-input" type="radio" name="filter-option" id="thisYear" value="thisYear" {%if not filter_option or filter_option =='thisYear'%} checked {%endif%}>
+                                    <label class="form-check-label" for="thisYear">This Year</label>
+                                </li>
+                                <li class="list-group-item">
+                                    <input class="form-check-input" type="radio" name="filter-option" id="last24hours" value="last24hours" {%if filter_option =='last24hours'%} checked {%endif%}>
+                                    <label class="form-check-label" for="last24hours">Last 24 hours</label>
+                                </li>
+                                <li class="list-group-item">
+                                    <input class="form-check-input" type="radio" name="filter-option" id="last7days" value="last7days" {%if filter_option =='last7days'%} checked {%endif%}>
+                                    <label class="form-check-label" for="last7days">Last 7 Days</label>
+                                </li>
+                                <li class="list-group-item">
+                                    <input class="form-check-input" type="radio" name="filter-option" id="last30days" value="last30days" {%if filter_option =='last30days'%} checked {%endif%}>
+                                    <label class="form-check-label" for="last30days">Last 30 Days</label>
+                                </li>
+                                <li class="list-group-item">
+                                    <input class="form-check-input" type="radio" name="filter-option" id="last365days" value="last365days" {%if filter_option =='last365days'%} checked {%endif%}>
+                                    <label class="form-check-label" for="last365days">Last 365 days</label>
+                                </li>
+                                <li class="list-group-item">
+                                    <input class="form-check-input" type="radio" name="filter-option" id="custom" value="custom" {%if filter_option =='custom'%} checked {%endif%}>
+                                    <label class="form-check-label" for="custom">Custom</label>
+                                </li>
+                            </ul>
+                            <input type="text" name="custom" id="datePicker" class="form-control mt-3" style="display:none;">
+                            <div class = "mb-3 text-center">
+                                <button class="btn btn-primary" id="applyBtn" type="submit">Apply</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <table class="table custom-table">
+                <thead>
+                    <tr>
+                        <th colspan="5" class="text-center">Expenses</th>
+                    </tr>
+
+
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Category</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Amount</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for expense in expenses%}
+                        <tr>
+                            <th scope="row">{{loop.index}}</th>
+                            <td>{{expense.category}}</td>
+                            <td>{{expense.description}}</td>
+                            <td>${{"%.2f" | format(expense.amount)}}</td>
+                            <td>
+                                <a href="/edit/{{ expense.id }}" class="btn btn-sm btn-warning">Edit</a>
+                                <form action="{{url_for('delete', id = expense['id'])}}" method="post" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    <tr>
+                        <th colspan="2" scope="row">Total spent</th>
+                        <th colspan="3">${{"%.2f" | format(total_spent)}}</th>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div>
+            <table class="table custom-table">
+                <thead>
+                    <tr>
+                        <th colspan="2" scope="row">Expenses by categories</th>
+                    </tr>
+
+                    <tr>
+                        <th scope="col">Category</th>
+                        <th scope="col">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows%}
+                        <tr>
+                            <td>{{row.category}}</td>
+                            <td>${{"%.2f" | format(row.total)}}</td>
+                        </tr>
+                    {%endfor%}
+
+                </tbody>
+
+
+            </table>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+        <script>
+            const customRadio = document.getElementById("custom");
+            const datePicker = document.getElementById("datePicker");
+
+
+            const fp = flatpickr("#datePicker", {
+                mode: "range",
+                dateFormat: "Y-m-d",
+                allowInput: true
+            });
+
+            customRadio.addEventListener("change", () => {
+                if (customRadio.checked) {
+                    datePicker.style.display = "block";
+                    fp.open();
+                }
+            });
+
+            document.getElementById("applyBtn").addEventListener("click", () => {
+                const selectedDates = datePicker.value;
+                console.log("Selected range:", selectedDates);
+            });
+        </script>
+
+    {%endif%}
+{% endblock %}

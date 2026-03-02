@@ -1,0 +1,378 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Statistics
+{% endblock %}
+
+
+{% block main %}
+
+    {% if no_data%}
+       <div class = "card text-center mt-4 py-4">
+            <p class = "fw-bold fs-5 mb-1">Nothing here yet!</p>
+            <p class="form-label text-center">Start tracking your spending by adding your first <a class="card-link" href = "/add">Expense.</a></p>
+        </div>
+
+
+    {%else%}
+        <div class=".container-fluid">
+
+            <div class="text-center mb-4">
+                <span class="fw-bold me-2 fs-5">Select year:</span>
+                {% for year in years %}
+                    <a href="?year={{ year }}" class="btn btn-sm {% if year == selected_year %}btn-primary{% else %}btn-secondary{% endif %} me-1">
+                        {{ year }}
+                    </a>
+                {% endfor %}
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <h5 class="card-header">Monthly Spending Trend</h5>
+                <div class="card-body">
+                    <p class="card-text">
+                        {%if totals|length >1%}
+                            {%if totals[-1]>totals[-2]%}
+                                📈 Your spending increased compared to last month.
+                            {%else%}
+                                📉 Your spending decreased compared to last month. Keep it up!
+                            {%endif%}
+                        {%else%}
+                            Keep adding expenses to see your spending trend!
+                        {%endif%}
+                    </p>
+
+
+                    <canvas id="myChart2" width="400" height="200"></canvas>
+                </div>
+
+            </div>
+
+            <div class="row g-3 mb-4 text-center">
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <p class="fw-bold mb-1 small">Monthly Average</p>
+                            <h4 class="fw-bold text-success">${{"%.2f" | format(monthly_average_spending)}}</h4>
+                            <p class="mb-0 small invisible">placeholder</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <p class="fw-bold mb-1 small">Highest Month</p>
+                            <h4 class="fw-bold text-danger">${{"%.2f" | format(highest_spending)}}</h4>
+                            <p class="fw-bold small mb-0">{{highest_month_name}}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <p class="fw-bold mb-1 small">Lowest Month</p>
+                            <h4 class="fw-bold text-primary">${{"%.2f" | format(lowest_spending)}}</h4>
+                            <p class="fw-bold small mb-0">{{lowest_month_name}}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="container-fluid text-center">
+
+                <div class="d-flex align-items-center justify-content-end gap-2 mb-4 filter-month">
+                    <span class="form-label-1">View breakdown for:</span>
+                    <form id="month_form" class="d-inline-block">
+                        <select class="form-select w-auto" id="month_select" aria-label="Default select example">
+                            <option disabled>Select Month</option>
+                            {%for month in range(1,13)%}
+                                <option value="{{month}}" {%if month == current_month %}selected{% endif %}>{{month_names[month-1]}}</option>
+                            {%endfor%}
+                        </select>
+                    </form>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <h5 class="card-header">Category Breakdown</h5>
+                            <div class="card-body">
+                                <h5 class="card-title">Spending by Category</h5>
+                                <p class="card-text">Bargraph showing how much you spent per category this month.</p>
+                                <canvas id="bar-graph" width="400" height="400"></canvas>
+
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <h5 class="card-header">Spending Distribution</h5>
+                            <div class="card-body">
+                                <h5 class="card-title">Category Share</h5>
+                                <p class="card-text">Proportional breakdown of your expenses this month.</p>
+                                <canvas id="doughnut" width="400" height="400"></canvas>
+
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+
+            <script>
+                const months = {{months | tojson}};
+                //the months are in string format month[0] - 1 =0      monthnmaes[0]=jan
+                const totals = {{totals | tojson}};
+
+
+                const month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+                const month_labels = [];
+
+
+                for (let i = 0; i < months.length; i++) {
+
+                    month_labels.push(month_names[parseInt(months[i]) - 1]);
+
+
+                }
+                console.log(totals);
+                console.log(month_labels);
+
+
+                const labels2 = month_labels;
+                const data2 = {
+                    labels: month_labels,
+                    datasets: [{
+                        label: 'Monthly spending',
+                        data: totals,
+                        fill: true,
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        pointBackgroundColor: '#2c3e50',
+                        pointBorderColor: '#2c3e50',
+                        pointBorderWidth:2,
+                        PointRadius: 6,
+                        PointHoverRadius:8,
+                        pointHoverBackgroundColor: '#2c3e50',
+                        pointHoverBorderColor: '#2c3e50',
+                        tension: 0.1
+
+                    }]
+                };
+
+                const linegraph = document.getElementById("myChart2")
+
+                new Chart(linegraph, {
+                    type: 'line',
+                    data: data2,
+                    options: {
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => `$${context.parsed.y.toFixed(2)}`
+                                }
+                            },
+                            legend:{
+                                    display: false
+                                }
+                        },
+                        scales: {
+                            y: {
+                                ticks: {
+                                    callback: (value) => `$${value}`,
+                                    color: '#2c3e50'
+                                },
+                                grid: {
+                                    color: 'rgba(0,0,0,0.05)'
+                                }
+
+                            },
+                            x:{
+                                 ticks: {
+                                    color: '#2c3e50'
+                                },
+                                 grid: {
+                                    display: false
+                                },
+                                border:{
+                                    display: true
+                                }
+
+
+                            }
+                        }
+                    }
+                });
+
+                const barData = {
+                    labels: [],
+                    datasets: [{
+                        label: "Spending By Category",
+                        data: [],
+                        backgroundColor: [
+                            'rgba(255, 26, 104)',
+                            'rgba(54, 162, 235)',
+                            'rgba(255, 206, 86)',
+                            'rgba(75, 192, 192)',
+                            'rgba(153, 102, 255)',
+                            'rgba(255, 159, 64)',
+                            'rgba(0, 0, 0)',
+                            'rgba(89, 156, 121)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 26, 104)',
+                            'rgba(54, 162, 235)',
+                            'rgba(255, 206, 86)',
+                            'rgba(75, 192, 192)',
+                            'rgba(153, 102, 255)',
+                            'rgba(255, 159, 64)',
+                            'rgba(0, 0, 0)',
+                            'rgba(89, 156, 121)'
+                        ],
+                        borderWidth: 1,
+                        borderSkipped: false,
+                        borderRadius: 6
+                    }]
+                };
+
+
+                const barCtx = document.getElementById('bar-graph');
+
+                const barGraph = new Chart(barCtx, {
+                    type: 'bar',
+                    data: barData,
+                    options: {
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => `$${context.parsed.y.toFixed(2)}`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                grid: {
+                                    display: false
+                                },
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: (value) => `$${value}`,
+                                    color: '#2c3e50'
+                                },
+                            border:{
+                                display: false
+                            }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+
+                                },
+                                ticks:{
+                                    color: '#2c3e50'
+                            },
+                            border:{
+                                display: false
+                            }
+                            }
+
+                        }
+                    }
+                });
+
+
+                const doughnutData = {
+                    labels: [],
+                    datasets: [{
+                        label: 'My First Dataset',
+                        data: [],
+                        backgroundColor: [
+                            'rgba(255, 26, 104)',
+                            'rgba(54, 162, 235)',
+                            'rgba(255, 206, 86)',
+                            'rgba(75, 192, 192)',
+                            'rgba(153, 102, 255)',
+                            'rgba(255, 159, 64)',
+                            'rgba(0, 0, 0)',
+                            'rgba(89, 156, 121)'
+                        ],
+                        hoverOffset: 4
+                    }]
+                };
+
+                const doughnutCtx = document.getElementById("doughnut");
+
+                const doughnut = new Chart(doughnutCtx, {
+                    type: 'doughnut',
+                    data: doughnutData,
+                    options: {
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => `$${context.parsed.toFixed(2)}`
+                                }
+                            },
+                            legend:{
+                                labels:{
+                                    color: '#2c3e50',
+                                    font:{
+                                        size: 13,
+                                        weight: '600'
+                                    },
+                                    usePointStyle: true,
+                                    padding:16
+
+                                }
+
+                            }
+                        }
+                    }
+
+                });
+
+        // learned about async functions with the help of ChatGPT
+                const month_select = document.getElementById("month_select");
+                month_select.addEventListener("change", async (change) => {
+                    const monthValue = change.target.value;
+
+                    const response = await fetch("/statistics/bar-graph", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({month: monthValue,year: {{selected_year}}})});
+            //
+
+
+            //turning json data into java obvject
+                    const data = await response.json();
+
+
+                    barGraph.data.labels = data.category_labels;
+                    barGraph.data.datasets[0].data = data.category_totals;
+                    barGraph.update();
+
+                    doughnut.data.labels = data.category_labels;
+                    doughnut.data.datasets[0].data = data.category_totals;
+                    doughnut.update();
+
+
+                });
+
+                document.addEventListener("DOMContentLoaded", () => {
+                    month_select.dispatchEvent(new Event("change"));
+                });
+            </script>
+
+
+
+        </div>
+
+    {%endif%}
+{% endblock %}
