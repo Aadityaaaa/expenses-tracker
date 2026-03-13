@@ -3,21 +3,73 @@ import datetime
 
 from cs50 import SQL
 from flask import Flask, render_template, redirect, request, session, flash, jsonify
-from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
-
 
 from helpers import apology, login_required
 
 
 app = Flask(__name__)
-
+app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-secret-change-me")
 app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
 
 
-db = SQL("sqlite:///expenses.db")
+# Fix Render's postgres:// URL to postgresql:// (required by SQLAlchemy)
+database_url = os.environ.get("DATABASE_URL")
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+db = SQL(database_url)
+
+
+def init_db():
+    """Create tables if they don't exist yet."""
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            email VARCHAR(255)
+        )
+    """)
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_username ON users(username)")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_email ON users(email)")
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS expenses (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            amount REAL NOT NULL,
+            description TEXT,
+            date TIMESTAMP DEFAULT NOW(),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS protein (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            proteinperdollar REAL NOT NULL,
+            description TEXT,
+            date TIMESTAMP DEFAULT NOW(),
+            price REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS budgets (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            amount REAL NOT NULL,
+            month INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            UNIQUE(user_id, category, month, year)
+        )
+    """)
+
+
+init_db()
 
 
 @app.after_request
@@ -51,8 +103,7 @@ def register():
             if rows[0]["username"] == request.form.get("username"):
                 return apology("the username is already taken", 400)
         else:
-            hash_password = generate_password_hash(
-                request.form.get("password"))
+            hash_password = generate_password_hash(request.form.get("password"))
             db.execute("INSERT INTO users (email, username, hash) VALUES (?, ?, ?)",
                        request.form.get("email"), request.form.get("username"), hash_password)
 
@@ -97,7 +148,7 @@ def logout():
 def index():
     query = "SELECT * FROM expenses WHERE user_id = ?"
     params = [session["user_id"]]
-# wanted to make 2 forms at first but 1 form felt like it was the better option is it enables user to conrtol both sort adn filter option at the same time
+
     filter_option = None
     sort_option = "date-desc"
 
@@ -108,14 +159,13 @@ def index():
     if request.method == "POST":
         filter_option = request.form.get("filter-option")
         sort_option = request.form.get("sort-option")
-
         session["filter_option"] = filter_option
         session["sort_option"] = sort_option
     else:
         filter_option = session.get("filter_option", None)
         sort_option = session.get("sort_option", "date-desc")
 
-    end_date = datetime.date.today()+datetime.timedelta(days=1)
+    end_date = datetime.date.today() + datetime.timedelta(days=1)
 
     if filter_option is None or filter_option == 'thisYear':
         now = datetime.datetime.today()
@@ -123,26 +173,25 @@ def index():
         query = query + " AND date BETWEEN ? AND ?"
         params.extend([start_date, end_date])
     if filter_option == "last24hours":
-        start_date = end_date-datetime.timedelta(days=1)
+        start_date = end_date - datetime.timedelta(days=1)
         query = query + " AND date BETWEEN ? AND ?"
         params.extend([start_date, end_date])
     elif filter_option == "last7days":
-        start_date = end_date-datetime.timedelta(days=7)
+        start_date = end_date - datetime.timedelta(days=7)
         query = query + " AND date BETWEEN ? AND ?"
         params.extend([start_date, end_date])
     elif filter_option == "last30days":
-        start_date = end_date-datetime.timedelta(days=30)
+        start_date = end_date - datetime.timedelta(days=30)
         query = query + " AND date BETWEEN ? AND ?"
         params.extend([start_date, end_date])
     elif filter_option == "last365days":
-        start_date = end_date-datetime.timedelta(days=365)
+        start_date = end_date - datetime.timedelta(days=365)
         query = query + " AND date BETWEEN ? AND ?"
         params.extend([start_date, end_date])
 
     custom_range = request.form.get("custom")
     if filter_option == "custom" and custom_range:
         start_str, end_str = custom_range.split(" to ")
-        # convert date into python date
         start_date = datetime.datetime.strptime(start_str, "%Y-%m-%d").date()
         end_date = datetime.datetime.strptime(end_str, "%Y-%m-%d").date()
         query = query + " AND date BETWEEN ? AND ?"
@@ -156,8 +205,6 @@ def index():
         query = query + " ORDER BY amount ASC"
     elif sort_option == "amount-desc":
         query = query + " ORDER BY amount DESC"
-
-# learned about *params with the help of ChatGPT
 
     ids = db.execute(query, *params)
     expenses = []
@@ -192,7 +239,8 @@ def add():
         except (TypeError, ValueError):
             return apology("enter a numerical value")
         else:
-            db.execute("INSERT INTO expenses(user_id, category, amount, description, date) VALUES (?, ?, ?, ?, datetime('now'))",
+            # NOW() replaces SQLite's datetime('now')
+            db.execute("INSERT INTO expenses(user_id, category, amount, description, date) VALUES (?, ?, ?, ?, NOW())",
                        session["user_id"], request.form.get("category"), amount, request.form.get("description"))
             return redirect("/")
 
@@ -225,10 +273,6 @@ def edit(id):
             return apology("the expense is not found")
         else:
             expense = rows[0]
-
-           # print(f"Expense category: '{expense['category']}'")
-            # print(f"Categories list: {categories}")
-
             return render_template("add.html", expense=expense, categories=categories, edit=True)
 
 
@@ -240,8 +284,9 @@ def history():
 
     year = int(request.args.get("year", str(current_year)))
 
+    # TO_CHAR replaces SQLite's strftime('%Y', date)
     all_years = db.execute(
-        "SELECT DISTINCT strftime('%Y', date) AS year FROM expenses WHERE user_id = ? AND date IS NOT NULL ORDER BY year DESC", session["user_id"])
+        "SELECT DISTINCT TO_CHAR(date, 'YYYY') AS year FROM expenses WHERE user_id = ? AND date IS NOT NULL ORDER BY year DESC", session["user_id"])
 
     years = []
     for row in all_years:
@@ -250,10 +295,9 @@ def history():
 
     if year not in years:
         years.insert(0, current_year)
-        # current year vs year
 
     history = db.execute(
-        "SELECT * FROM expenses WHERE user_id = ? AND strftime('%Y', date) = ? ORDER BY date DESC", session["user_id"], str(year))
+        "SELECT * FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'YYYY') = ? ORDER BY date DESC", session["user_id"], str(year))
     if not history:
         return render_template("history.html", history=None, years=None, selected_year=year, no_data=True)
 
@@ -288,8 +332,7 @@ def protein():
         except (TypeError, ValueError):
             return apology("enter amount correctly.")
 
-        protein_per_dollar = ((net_weight/serving_size)
-                              * (protein_serving_size))/price if price and price > 0 else None
+        protein_per_dollar = ((net_weight / serving_size) * protein_serving_size) / price if price and price > 0 else None
 
         db.execute("INSERT INTO protein (user_id, name, proteinperdollar, price) VALUES (?, ?, ?, ?)",
                    session["user_id"], name, protein_per_dollar, price)
@@ -298,9 +341,7 @@ def protein():
     else:
         all_items = db.execute(
             "SELECT * FROM protein WHERE user_id = ? ORDER BY proteinperdollar DESC", session["user_id"])
-
-
-        return render_template("proteinperdollar.html", all_items=all_items, no_data=len(all_items)==0)
+        return render_template("proteinperdollar.html", all_items=all_items, no_data=len(all_items) == 0)
 
 
 @app.route("/protein/edit/<int:id>", methods=["GET", "POST"])
@@ -308,7 +349,7 @@ def protein():
 def edit_protein(id):
     if request.method == "POST":
         name = request.form.get("name")
-        price = (request.form.get("price"))
+        price = request.form.get("price")
         net_weight = request.form.get("net_weight")
         serving_size = request.form.get("serving_size")
         protein_serving_size = request.form.get("protein_serving_size")
@@ -323,8 +364,7 @@ def edit_protein(id):
         except (TypeError, ValueError):
             return apology("enter amount correctly.")
 
-        protein_per_dollar = ((net_weight/serving_size)
-                              * (protein_serving_size))/price if price and price > 0 else None
+        protein_per_dollar = ((net_weight / serving_size) * protein_serving_size) / price if price and price > 0 else None
 
         db.execute("UPDATE protein SET name= ?, proteinperdollar= ?, price= ? WHERE id= ? AND user_id= ?",
                    name, protein_per_dollar, price, id, session["user_id"])
@@ -339,7 +379,7 @@ def edit_protein(id):
         else:
             all_items = db.execute(
                 "SELECT * FROM protein WHERE user_id = ? ORDER BY proteinperdollar DESC", session["user_id"])
-        return render_template("proteinperdollar.html", protein_to_edit=protein_to_edit[0], all_items=all_items, no_data=len(all_items)==0)
+        return render_template("proteinperdollar.html", protein_to_edit=protein_to_edit[0], all_items=all_items, no_data=len(all_items) == 0)
 
 
 @app.route("/protein/delete/<int:id>", methods=["POST"])
@@ -358,7 +398,7 @@ def statistics():
     year = int(request.args.get("year", str(current_year)))
 
     all_years = db.execute(
-        "SELECT DISTINCT strftime('%Y', date) AS year FROM expenses WHERE user_id = ? AND date IS NOT NULL ORDER BY year DESC", session["user_id"])
+        "SELECT DISTINCT TO_CHAR(date, 'YYYY') AS year FROM expenses WHERE user_id = ? AND date IS NOT NULL ORDER BY year DESC", session["user_id"])
 
     years = []
     for row in all_years:
@@ -369,46 +409,43 @@ def statistics():
         years.insert(0, current_year)
 
     monthly_data = db.execute(
-        "SELECT strftime('%m', date) AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND strftime('%Y', date) = ? GROUP BY strftime('%m',date)", session["user_id"], str(year))
+        "SELECT TO_CHAR(date, 'MM') AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'YYYY') = ? GROUP BY TO_CHAR(date, 'MM')", session["user_id"], str(year))
+
     months = []
     totals = []
     for i in range(len(monthly_data)):
-        months.append((monthly_data[i]["month"]))
-        totals.append((monthly_data[i]["monthly_total"]))
-    print(months)
+        months.append(monthly_data[i]["month"])
+        totals.append(monthly_data[i]["monthly_total"])
 
     current_month = int(datetime.datetime.now().month)
-    print(current_month)
 
     month_names = ["Jan", "Feb", "Mar", "Apr", "May",
                    "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     row = db.execute(
-        "SELECT month, AVG(monthly_total) AS avg_spending, MAX(monthly_total) AS highest, MIN(monthly_total) AS lowest FROM (SELECT strftime('%m', date) AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND strftime('%Y', date) = ? GROUP BY strftime('%m',date))", session["user_id"], str(year))
+        "SELECT AVG(monthly_total) AS avg_spending, MAX(monthly_total) AS highest, MIN(monthly_total) AS lowest FROM (SELECT TO_CHAR(date, 'MM') AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'YYYY') = ? GROUP BY TO_CHAR(date, 'MM')) AS monthly", session["user_id"], str(year))
 
     monthly_average_spending = row[0]["avg_spending"]
     highest_spending = row[0]["highest"]
     lowest_spending = row[0]["lowest"]
 
     row1 = db.execute(
-        "SELECT month, MAX(monthly_total) AS highest FROM (SELECT strftime('%m', date) AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND strftime('%Y', date) = ? GROUP BY strftime('%m',date))", session["user_id"], str(year))
+        "SELECT month, MAX(monthly_total) AS highest FROM (SELECT TO_CHAR(date, 'MM') AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'YYYY') = ? GROUP BY TO_CHAR(date, 'MM')) AS monthly", session["user_id"], str(year))
 
     if not row1 or row1[0]["month"] is None:
         return render_template("stats.html", years=years, selected_year=year, current_month=current_month, months=months, totals=totals, month_names=month_names, monthly_average_spending=None, highest_spending=None, lowest_spending=None, highest_month_name=None, lowest_month_name=None, no_data=True)
 
     highest_month_num = int(row1[0]["month"])
-    print(highest_month_num)
-    highest_month_name = month_names[highest_month_num-1]
+    highest_month_name = month_names[highest_month_num - 1]
 
     row2 = db.execute(
-        "SELECT month, MIN(monthly_total) AS lowest FROM (SELECT strftime('%m', date) AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND strftime('%Y', date) = ? GROUP BY strftime('%m',date))", session["user_id"], str(year))
+        "SELECT month, MIN(monthly_total) AS lowest FROM (SELECT TO_CHAR(date, 'MM') AS month, SUM(amount) AS monthly_total FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'YYYY') = ? GROUP BY TO_CHAR(date, 'MM')) AS monthly", session["user_id"], str(year))
 
     if not row2 or row2[0]["month"] is None:
         return render_template("stats.html", years=years, selected_year=year, current_month=current_month, months=months, totals=totals, month_names=month_names, monthly_average_spending=None, highest_spending=None, lowest_spending=None, highest_month_name=None, lowest_month_name=None, no_data=True)
 
     lowest_month_num = int(row2[0]["month"])
-    print(lowest_month_num)
-    lowest_month_name = month_names[lowest_month_num-1]
+    lowest_month_name = month_names[lowest_month_num - 1]
 
     return render_template("stats.html", years=years, selected_year=year, current_month=current_month, months=months, totals=totals, month_names=month_names, monthly_average_spending=monthly_average_spending, highest_spending=highest_spending, lowest_spending=lowest_spending, highest_month_name=highest_month_name, lowest_month_name=lowest_month_name)
 
@@ -423,7 +460,7 @@ def bar_graph():
     selected_month = f"{month_index:02}"
 
     category_data = db.execute(
-        "SELECT category, SUM(amount) AS total FROM expenses WHERE user_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?  GROUP BY category", session["user_id"], year, selected_month)
+        "SELECT category, SUM(amount) AS total FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'YYYY') = ? AND TO_CHAR(date, 'MM') = ? GROUP BY category", session["user_id"], year, selected_month)
 
     category_labels = []
     category_totals = []
@@ -452,8 +489,6 @@ def budget():
     if request.method == "POST":
         category = request.form.getlist("category[]")
         amount = request.form.getlist("amount[]")
-        print(category)
-        print(amount)
 
         now = datetime.datetime.now()
         month = f"{now.month:02d}"
@@ -466,10 +501,6 @@ def budget():
                        session["user_id"], category[i], amount[i], month, year)
 
         return redirect("/budget")
-
-        # unique constraint failing --> use On conflict?? research on do update and on conflict
-
-        # return redirect?
 
     return render_template("budget.html", categories=categories, existing_budgets=existing_budgets, budget_exists=budget_exists)
 
@@ -484,7 +515,7 @@ def progressbar_data():
     existing_budgets = db.execute(
         "SELECT category, amount FROM budgets WHERE user_id = ? AND month = ? AND year = ?", session["user_id"], month, year)
     current_spending = db.execute(
-        "SELECT category, SUM(amount) AS total FROM expenses WHERE user_id = ? AND strftime('%m', date) = ? AND strftime('%Y', date) = ? GROUP BY category", session["user_id"], month, year)
+        "SELECT category, SUM(amount) AS total FROM expenses WHERE user_id = ? AND TO_CHAR(date, 'MM') = ? AND TO_CHAR(date, 'YYYY') = ? GROUP BY category", session["user_id"], month, year)
 
     category_data = {}
 
@@ -504,6 +535,3 @@ def progressbar_data():
         spent.append(values["spent"])
 
     return jsonify({"progress_labels": progress_labels, "progress_budget": progress_budget, "spent": spent})
-
-
-# horizontal stacked bar chart for progress
