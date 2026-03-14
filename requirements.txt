@@ -2,3 +2,4 @@ Flask
 gunicorn
 cs50
 psycopg2-binary
+requests
